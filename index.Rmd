@@ -1,0 +1,355 @@
+---
+title: "Supplementary materials"
+description: | 
+  Modeling Recurrent Safety-critical Events among Commercial Truck Drivers:
+  A Bayesian Hierarchical Jump Power Law Process
+date: July 1, 2020
+output: 
+  distill::distill_article:
+    #code_folding: show
+    toc: true
+    toc_float: true
+    number_sections: true
+  #prettydoc::html_pretty:
+  #  theme: leonids
+  #  highlight: vignette
+---
+
+<style type="text/css">
+h1 {
+    display: block;
+    font-size: 20px;
+    margin-block-start: 0.em;
+    margin-block-end: 0.em;
+    margin-inline-start: 0px;
+    margin-inline-end: 0px;
+    font-weight: bold;
+}
+d-article h2 {
+    font-weight: 600;
+    font-size: 16px;
+    line-height: 1.25em;
+    margin: 0rem 0 0rem 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    padding-bottom: 1rem;
+}
+</style>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
+```
+
+This website serves as the supplementary materials for the manuscript titled "Modeling Recurrent Safety-critical Events among Commercial Truck Drivers: A Bayesian Hierarchical Jump Power Law Process", which is under review at [Journal of the American Statistical Association](https://amstat.tandfonline.com/toc/uasa20/current).
+
+Two models are proposed in this paper: 
+
+1. a non-homogeneous Poisson process (NHPP) with the power law process (PLP) intensity function,
+2. A jump power law process (JPLP)
+
+The first section shows the R code to simulate data following the NHPP and JPLP data generating process. Only 10 drivers are assumed to minimize the simulation and Bayesian estimation time. Then, Stan code to perform Bayesian hierarchical PLP and JPLP estimation is presented in the next section. In the third section, R code for performing Hamiltonian Monte Carlo for the simulated data are demonstrated. In the last section, we present the R code to get summary statistics (posterior mean, 95% credible interval, Gelman-Rubin statistics $\hat{R}$, and effective sample size ESS) from the posterior distribution are shown.
+
+Simulate data
+=============
+Simulate NHPP data with PLP intensity function
+----------------------------------------------
+
+```{r}
+pacman::p_load(dplyr, rstan, broom)
+source('Functions/NHPP_functions.R')
+set.seed(123)
+df_NHPP = sim_hier_nhpp(D = 10, beta = 1.2)
+str(df_NHPP$hier_dat)
+```
+
+NHPP is estimated at shift-level. Here are the definition of the simulated NHPP data passed to Stan:
+
+- N: the total number of events,
+- K: the number of predictor variables for $\theta$,
+- S: the total number of shifts $S$,
+- D: the total number of drivers $D$,
+- id: driver ID for each shift $d = \{1, 2, \ldots, D\}$,
+- tau: shift end time $\tau$,
+- event_time: time of the events (SCEs) $t_{d, s, i}$,
+- group_size: the number of events for a driver in a shift $n_{d, s}$,
+- X_predictors: the predictor matrix.
+
+Simulate JPLP data
+------------------
+
+```{r}
+source('Functions/JPLP_functions.R')
+set.seed(123)
+df_JPLP = sim_hier_JPLP(D = 10, beta = 1.2)
+str(df_JPLP$stan_dt)
+```
+
+In contrast to the NHPP, JPLP is estimated at trip level. Here are the definition of the simulated JPLP data passed to Stan:
+
+- N: the total number of events,
+- K: the number of predictor variables for $\theta$,
+- S: the total number of trips $S$,
+- D: the total number of drivers $D$,
+- id: driver ID for each shift $d = \{1, 2, \ldots, D\}$,
+- r_trip: the index of the trip within a shift $r$ (the first one, second one, ...)
+- t_trip_start: trip start time $a_{d, s, r-1}$,
+- t_trip_end: trip end time $a_{d, s, r}$,
+- event_time: time of the events (SCEs) $t_{d, s, i}$,
+- group_size: the number of events for a driver in a shift $n_{d, s}$,
+- X_predictors: the predictor matrix.
+
+Note that the trip start and end time are counted from the beginning of the shift, and the rest time is excluded from calculation.
+
+Stan code
+===========
+The Stan codes for both models are written using self-define likelihood functions. These likelihood functions have been derived in the manuscript.
+
+NHPP with PLP intensity function
+--------------------------------
+
+```{r}
+stan_NHPP = 
+'// Stan code to estimate a hierchical PLP process
+functions{
+  real nhpp_log(vector t, real beta, real theta, real tau){
+    vector[num_elements(t)] loglik_part;
+    real loglikelihood;
+    for (i in 1:num_elements(t)){
+      loglik_part[i] = log(beta) - beta*log(theta) + (beta - 1)*log(t[i]);
+    }
+    loglikelihood = sum(loglik_part) - (tau/theta)^beta;
+    return loglikelihood;
+  }
+  real nhppnoevent_lp(real tau, real beta, real theta){
+    real loglikelihood = - (tau/theta)^beta;
+    return(loglikelihood);
+  }
+}
+data {
+  int<lower=1> N;                // total # of failures
+  int<lower=1> K;                // number of predictors
+  int<lower=1> S;                // total # of shifts
+  int<lower=1> D;                // total # of drivers
+  int<lower=1> id[S];            // driver index, must be an array
+  vector<lower=0>[S] tau;        // truncated time
+  vector<lower=0>[N] event_time; // failure time
+  int group_size[S];             // group sizes
+  matrix[S, K] X_predictors;     // predictor variable matrix
+}
+transformed data{
+  matrix[S, K] X_centered;
+  vector[K] X_means;
+  for(k0 in 1:K){
+    X_means[k0] = mean(X_predictors[, k0]);
+    X_centered[,k0] = X_predictors[, k0] - X_means[k0];
+  }
+}
+parameters{
+  real mu0;             // hyperparameter: mean
+  real<lower=0> sigma0; // hyperparameter: s.e.
+  real<lower=0> beta;   // shape parameter
+  vector[K] R1_K;       // fixed parameters each of K predictors
+  vector[D] R0;         // random intercept for each of D drivers
+}
+model{
+  int position = 1;
+  vector[S] theta_temp;
+
+  for (s0 in 1:S){
+    theta_temp[s0] = exp(R0[id[s0]] + X_centered[s0,]*R1_K);
+  }
+
+  for (s1 in 1:S){
+    if(group_size[s1] == 0) {
+      target += nhppnoevent_lp(tau[s1], beta, theta_temp[s1]);
+    }else{
+      segment(event_time, position, group_size[s1]) ~ nhpp(beta, theta_temp[s1], tau[s1]);
+      position += group_size[s1];
+    }
+  }
+  beta ~ gamma(1, 1);
+  R0 ~ normal(mu0, sigma0);
+  R1_K  ~ normal(0, 10);
+  mu0 ~ normal(0, 10);
+  sigma0 ~ gamma(1, 1);
+}
+generated quantities{
+  real mu0_true = mu0 - dot_product(X_means, R1_K);
+  vector[D] R0_true = R0 - dot_product(X_means, R1_K);
+  //real theta_correct = theta_temp - dot_product(X_centered, R1_K);
+}
+
+'
+```
+
+
+JPLP
+----
+
+```{r}
+stan_JPLP = 
+'
+functions{
+  // LogLikelihood function for shifts with events (N_{event} > 0)
+  real jplp_log(vector t_event, // time of SCEs
+                real trip_start,
+                real trip_end,
+                int r,// trip index
+                real beta,
+                real theta,
+                real kappa)
+  {
+    vector[num_elements(t_event)] loglik;
+    real loglikelihood;
+    for (i in 1:num_elements(t_event))
+    {
+      loglik[i] = (r - 1)*log(kappa) + log(beta) - beta*log(theta) + (beta - 1)*log(t_event[i]);
+    }
+    loglikelihood = sum(loglik) - kappa^(r - 1)*theta^(-beta)*(trip_end^beta - trip_start^beta);
+    return loglikelihood;
+  }
+  // LogLikelihood function for shifts with no event (N_{event} = 0)
+  real jplpoevent_lp(real trip_start,
+                     real trip_end,
+                     int r,
+                     real beta,
+                     real theta,
+                     real kappa)
+  {
+    real loglikelihood = - kappa^(r - 1)*theta^(-beta)*(trip_end^beta - trip_start^beta);
+    return(loglikelihood);
+  }
+}
+data {
+  int<lower=0> N; //total # of events
+  int<lower=1> D; //total # of drivers
+  int<lower=1> K; //number of predictors
+  int<lower=0> S; //total # of trips, not shifts!!
+  int<lower=1> id[S];//driver index, must be an array
+  int r_trip[S];//index of trip $r$
+  vector<lower=0>[S] t_trip_start;//trip start time
+  vector<lower=0>[S] t_trip_end;//trip end time
+  vector<lower=0>[N] event_time; //failure time
+  int group_size[S]; //group sizes
+  matrix[S, K] X_predictors;//predictor variable matrix
+}
+transformed data{
+  matrix[S, K] X_centered;
+  vector[K] X_means;
+  for(k0 in 1:K){
+    X_means[k0] = mean(X_predictors[, k0]);
+    X_centered[,k0] = X_predictors[, k0] - X_means[k0];
+  }
+}
+parameters{
+  real mu0; // hyperparameter
+  real<lower=0> sigma0;// hyperparameter
+  real<lower=0> beta;
+  real<lower=0, upper=1> kappa;
+  vector[K] R1_K; // fixed parameters for K predictors
+  vector[D] R0; // random intercept for D drivers
+}
+model{
+  int position = 1;
+  vector[S] theta_temp;
+
+  for (s0 in 1:S){
+    theta_temp[s0] = exp(R0[id[s0]] + X_centered[s0,]*R1_K);
+  }
+
+  for (s1 in 1:S){ // Likelihood estimation for JPLP based on trips, not shifts
+    if(group_size[s1] == 0){
+      target += jplpoevent_lp(t_trip_start[s1], t_trip_end[s1], r_trip[s1], beta, theta_temp[s1], kappa);
+      }else{
+      segment(event_time, position, group_size[s1]) ~ jplp_log(t_trip_start[s1], t_trip_end[s1], r_trip[s1], beta, theta_temp[s1], kappa);
+      position += group_size[s1];
+    }
+  }
+//PRIORS
+  beta ~ gamma(1, 1);
+  kappa ~ uniform(0, 1);
+  R0 ~ normal(mu0, sigma0);
+  R1_K  ~ normal(0, 10);
+  mu0 ~ normal(0, 10);
+  sigma0 ~ gamma(1, 1);
+}
+generated quantities{
+  real mu0_true = mu0 - dot_product(X_means, R1_K);
+  vector[D] R0_true = R0 - dot_product(X_means, R1_K);
+  //real theta_correct = theta_temp - dot_product(X_centered, R1_K);
+}
+'
+```
+
+
+
+Bayesian estimation for simulated data
+======================================
+
+NHPP with PLP intensity function
+--------------------------------
+
+```{r}
+fit_NHPP = stan("Stan/nhpp_plp_hierarchical.stan",
+                chains = 4, iter = 1000, warmup = 500, data = df_NHPP$hier_dat)
+```
+
+
+JPLP
+----
+
+```{r}
+fit_JPLP = stan("Stan/jplp_hierarchical_kappa02.stan",
+                chains = 4, iter = 1000, warmup = 500, data = df_JPLP$stan_dt)
+```
+
+
+
+Posterior summary and diagnostic statistics 
+===========================================
+
+NHPP with PLP intensity function
+--------------------------------
+
+### Posterior mean, 95% credible interval, ESS, and $\hat{R}$
+
+```{r}
+est_NHPP = broom::tidy(fit_NHPP, conf.int = T, rhat = T, ess = T)
+est_NHPP
+```
+
+### Trace plots for selected parameters
+
+```{r}
+t_NHPP = stan_trace(fit_NHPP, pars = 'mu0|sigma0|beta')
+t_NHPP
+```
+
+JPLP
+----
+### Posterior mean, 95% credible interval, ESS, and $\hat{R}$
+
+```{r}
+est_JPLP = broom::tidy(fit_JPLP, conf.int = T, rhat = T, ess = T)
+est_JPLP
+```
+
+### Trace plots for selected parameters
+
+```{r}
+t_JPLP = stan_trace(fit_JPLP, pars = 'mu0|sigma0|beta|kappa')
+t_JPLP
+```
+
+
+
+Session Information
+===================
+
+```{r}
+sessionInfo()
+```
+
+
+
+
