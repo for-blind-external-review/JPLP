@@ -1,18 +1,13 @@
 ---
 title: "Supplementary materials"
 description: | 
-  Modeling Recurrent Safety-critical Events among Commercial Truck Drivers:
-  A Bayesian Hierarchical Jump Power Law Process
-date: July 1, 2020
+  Hierarchical Point Process Models for Recurring Safety Critical Events for Commercial Truck Drivers
+date: July 15, 2020
 output: 
   distill::distill_article:
-    #code_folding: show
     toc: true
     toc_float: true
     number_sections: true
-  #prettydoc::html_pretty:
-  #  theme: leonids
-  #  highlight: vignette
 ---
 
 <style type="text/css">
@@ -40,11 +35,11 @@ d-article h2 {
 knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
 ```
 
-This website serves as the supplementary materials for the manuscript titled "Modeling Recurrent Safety-critical Events among Commercial Truck Drivers: A Bayesian Hierarchical Jump Power Law Process", which is under review at [Journal of the American Statistical Association](https://amstat.tandfonline.com/toc/uasa20/current).
+This website serves as the supplementary materials for the manuscript titled "**Hierarchical Point Process Models for Recurring Safety Critical Events for Commercial Truck Drivers**", which is under review at [Journal of the American Statistical Association](https://amstat.tandfonline.com/toc/uasa20/current).
 
 Two models are proposed in this paper: 
 
-1. a non-homogeneous Poisson process (NHPP) with the power law process (PLP) intensity function,
+1. A non-homogeneous Poisson process (NHPP) with the power law process (PLP) intensity function,
 2. A jump power law process (JPLP)
 
 The first section shows the R code to simulate data following the NHPP and JPLP data generating process. Only 10 drivers are assumed to minimize the simulation and Bayesian estimation time. Then, Stan code to perform Bayesian hierarchical PLP and JPLP estimation is presented in the next section. In the third section, R code for performing Hamiltonian Monte Carlo for the simulated data are demonstrated. In the last section, we present the R code to get summary statistics (posterior mean, 95% credible interval, Gelman-Rubin statistics $\hat{R}$, and effective sample size ESS) from the posterior distribution are shown.
@@ -291,7 +286,7 @@ NHPP with PLP intensity function
 
 ```{r}
 fit_NHPP = stan("Stan/nhpp_plp_hierarchical.stan",
-                chains = 4, iter = 1000, warmup = 500, data = df_NHPP$hier_dat)
+                chains = 4, iter = 5000, warmup = 1000, data = df_NHPP$hier_dat)
 ```
 
 
@@ -299,8 +294,8 @@ JPLP
 ----
 
 ```{r}
-fit_JPLP = stan("Stan/jplp_hierarchical_kappa02.stan",
-                chains = 4, iter = 1000, warmup = 500, data = df_JPLP$stan_dt)
+fit_JPLP = stan("Stan/jplp_hierarchical.stan",
+                chains = 4, iter = 5000, warmup = 1000, data = df_JPLP$stan_dt)
 ```
 
 
@@ -320,8 +315,8 @@ est_NHPP
 
 ### Trace plots for selected parameters
 
-```{r}
-t_NHPP = stan_trace(fit_NHPP, pars = 'mu0|sigma0|beta')
+```{r fig.height=4.5}
+t_NHPP = stan_trace(fit_NHPP, pars = c('mu0', 'sigma0', 'beta'), ncol = 1)
 t_NHPP
 ```
 
@@ -336,12 +331,20 @@ est_JPLP
 
 ### Trace plots for selected parameters
 
-```{r}
-t_JPLP = stan_trace(fit_JPLP, pars = 'mu0|sigma0|beta|kappa')
+```{r fig.height=6}
+t_JPLP = stan_trace(fit_JPLP, pars = c('mu0', 'sigma0', 'beta', 'kappa'), ncol = 1)
 t_JPLP
 ```
 
 
+Supplementary trace plots for selected parameters in the manuscript
+----
+
+Trace plots below are generated from the 496 large commercial truck drivers, which is demonstrated as a case study in the main manuscript.
+
+```{r}
+knitr::include_graphics("Figures/Aim3_trace_plot.jpeg")
+```
 
 Session Information
 ===================
