@@ -1,9 +1,13 @@
 ---
-title: "Supplementary materials"
-description: | 
-  Hierarchical Point Process Models for Recurring Safety Critical Events for Commercial Truck Drivers
+title: |
+  | Supplementary Materials
+  | Hierarchical Point Process Models for Recurring Safety Critical Events Involving Commercial Truck Drivers:
+  | A Reliability Framework for Human Performance Modeling
 date: July 15, 2020
 output: 
+  pdf_document:
+    toc: true
+    number_sections: true
   distill::distill_article:
     toc: true
     toc_float: true
@@ -342,7 +346,7 @@ Supplementary trace plots for selected parameters in the manuscript
 
 Trace plots below are generated from the 496 large commercial truck drivers, which is demonstrated as a case study in the main manuscript.
 
-```{r}
+```{r out.width='\\textwidth'}
 knitr::include_graphics("Figures/Aim3_trace_plot.jpeg")
 ```
 

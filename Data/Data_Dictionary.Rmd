@@ -1,0 +1,49 @@
+---
+title: "Data Dictionary"
+output: 
+  pdf_document:
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Power Law Process (PLP)
+
+```{r}
+plp = readRDS('PLP.rds')
+str(plp)
+```
+
+- `N`: The total number of events
+- `K`: The total number of predictor variables
+- `S`: The total number of shifts,
+- `D`: The total number of drivers,
+- `id`: The index of driver ID for different shifts
+- `tau`: The length of each shift (excluding break rest time)
+- `event_time`: Time to each event
+- `group_size`: The number of events in each shift
+- `X_predictors`: The predictor variable matrix
+
+\clearpage
+
+# Jump Power Law Process (JPLP)
+
+```{r}
+jplp = readRDS('JPLP.rds')
+str(jplp)
+```
+
+- `N`: The total number of events
+- `K`: The total number of predictor variables
+- `S`: The total number of shifts,
+- `D`: The total number of drivers,
+- `id`: The index of driver ID for different shifts
+- `r_trip`: The index of different segments
+- `t_trip_start`: The start time of different segments
+- `t_trip_end`: The end time of different segments
+- `event_time`: Time to each event
+- `group_size`: The number of events in each shift
+- `X_predictors`: The predictor variable matrix
